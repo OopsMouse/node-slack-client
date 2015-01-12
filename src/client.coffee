@@ -1,6 +1,8 @@
 https       = require 'https'
+url         = require 'url'
 querystring = require 'querystring'
 WebSocket   = require 'ws'
+tunnel      = require 'tunnel'
 Log            = require 'log'
 {EventEmitter} = require 'events'
 
@@ -16,7 +18,7 @@ class Client extends EventEmitter
 
   host: 'api.slack.com'
 
-  constructor: (@token, @autoReconnect=true, @autoMark=false) ->
+  constructor: (@token, @autoReconnect=true, @autoMark=false, proxyUrl) ->
     @authenticated  = false
     @connected      = false
 
@@ -37,6 +39,8 @@ class Client extends EventEmitter
     @_connAttempts  = 0
 
     @logger         = new Log process.env.SLACK_LOG_LEVEL or 'info'
+
+    @proxy          = if proxyUrl then url.parse(proxyUrl) else null
 
   #
   # Logging in and connection management functions
@@ -97,7 +101,23 @@ class Client extends EventEmitter
     if not @socketUrl
       return false
     else
-      @ws = new WebSocket @socketUrl
+      tunnelAgent = null
+
+      if @proxy?
+        tunnelFunc = null
+
+        if url.parse(@socketUrl).protocol is 'wss:'
+          tunnelFunc = if @proxy.protocol is 'https:' then tunnel.httpsOverHttps else tunnel.httpsOverHttp
+        else
+          tunnelFunc = if @proxy.protocol is 'https:' then tunnel.httpOverHttps  else tunnel.httpOverHttp
+
+        tunnelAgent = tunnelFunc {
+          proxy:
+            host: @proxy.hostname,
+            port: @proxy.port
+        }
+
+      @ws = new WebSocket @socketUrl, null, { agent: tunnelAgent }
       @ws.on 'open', =>
         @emit 'open'
         @connected = true
@@ -509,6 +529,17 @@ class Client extends EventEmitter
       headers:
         'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': post_data.length
+
+    if @proxy?
+      tunnelFunc = if @proxy.protocol is 'https' then tunnel.httpsOverHttps else tunnel.httpsOverHttp
+
+      tunnelAgent = tunnelFunc {
+        proxy:
+          host: @proxy.hostname,
+          port: @proxy.port
+      }
+
+      options.agent = tunnelAgent
 
     req = https.request(options)
 
