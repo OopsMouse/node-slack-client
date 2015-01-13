@@ -531,7 +531,7 @@ class Client extends EventEmitter
         'Content-Length': post_data.length
 
     if @proxy?
-      tunnelFunc = if @proxy.protocol is 'https' then tunnel.httpsOverHttps else tunnel.httpsOverHttp
+      tunnelFunc = if @proxy.protocol is 'https:' then tunnel.httpsOverHttps else tunnel.httpsOverHttp
 
       tunnelAgent = tunnelFunc {
         proxy:
